@@ -3,7 +3,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
 <title>Zero-downtime Unicorn deploys are broken with PostgreSQL</title>
-<!-- 2013-12-06 Fri 15:29 -->
+<!-- 2013-12-06 Fri 16:11 -->
 <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
 <meta name="generator" content="Org-mode"/>
 <meta name="author" content="Yuri Niyazov"/>
@@ -162,7 +162,7 @@ I did read the excellent <a href="http://www.amazon.com/Programming-Environment-
 <h2 id="sec-2"><span class="section-number-2">2</span> Introduction</h2>
 <div class="outline-text-2" id="text-2">
 <p>
-If you are a Ruby shop running <a href="http://unicorn.bogomips.org/">Unicorn</a> and <a href="http://www.postgresql.org/">PostgreSQL</a>, you might have noticed that your zero-downtime deploys are broken. The visible symptom of this breakage is a large number of <code>PG::QueryCanceled</code> or <code>ActiveRecord::StatementInvalid</code> (with <code>PG::QueryCanceled</code> in the message field), exceptions in your error logs and visibly aborted requests to your users. This is happening on every deploy, even though you have diligently read the Unicorn documentation and know that sending the USR2 signal to the Unicorn master will let all the Unicorn workers finish their current requests before exiting while the new master is bringing up new workers. 
+If you are a Ruby shop running <a href="http://unicorn.bogomips.org/">Unicorn</a> and <a href="http://www.postgresql.org/">PostgreSQL</a>, you might have noticed that your zero-downtime deploys are broken. The visible symptom of this breakage is a large number of <code>PG::QueryCanceled</code> or <code>ActiveRecord::StatementInvalid</code> (with <code>PG::QueryCanceled</code> in the message field) exceptions in your error logs and visibly aborted requests to your users. This is happening on every deploy, even though you have diligently read the Unicorn documentation and know that sending the USR2 signal to the Unicorn master will let all the Unicorn workers finish their current requests before exiting while the new master is bringing up new workers. 
 </p>
 </div>
 </div>
@@ -171,7 +171,7 @@ If you are a Ruby shop running <a href="http://unicorn.bogomips.org/">Unicorn</a
 <h2 id="sec-3"><span class="section-number-2">3</span> The Ruby PostgreSQL gem change</h2>
 <div class="outline-text-2" id="text-3">
 <p>
-On May 10th, 2013, <a href="https://github.com/ged/ruby-pg/commit/a4283c5c5b66ff4ecbb071965cf216e93d76a648">this commit</a> went into the Postgresql Ruby gem repository. On Jul 23rd, 2013, it was released, along with other changes, as version 0.16. From an architectural correctness point of view, this change is a good one: Ruby (in particular, we are talking about CRuby 2.0.0) executes signal handlers on the main thread. Before version 0.16, executing <code> conn.exec("select&nbsp;pg_sleep(10)") </code> was a blocking call - if it was executing on the main thread, then no signal handlers could execute until <code>conn.exec</code> returned. In every-day terms, this means that pressing <code>Ctrl-C</code> while something on the main thread was performing a long-running action in PostgreSQL would have no effect until the SQL action completed, which is undesirable - what if the user was trying to interrupt the long-running action because it was dropping the "users" table?
+On May 10th, 2013, <a href="https://github.com/ged/ruby-pg/commit/a4283c5c5b66ff4ecbb071965cf216e93d76a648">this commit</a> went into the Postgresql Ruby gem repository. On Jul 23rd, 2013, it was released, along with other changes, as version 0.16. From an architectural correctness point of view, this change is a good one: Ruby (in particular, we are talking about MRI 2.0.0) executes signal handlers on the main thread. Before version 0.16, executing <code> conn.exec("select&nbsp;pg_sleep(10)") </code> was a blocking call - if it was executing on the main thread, then no signal handlers could execute until <code>conn.exec</code> returned. In every-day terms, this means that pressing <code>Ctrl-C</code> while something on the main thread was performing a long-running action in PostgreSQL would have no effect until the SQL action completed, which is undesirable - what if the user was trying to interrupt the long-running action because it was dropping the "users" table?
 </p>
 
 <p>
@@ -204,7 +204,7 @@ Some explanation: Unicorn workers all listen on the same socket, and each time a
 <h2 id="sec-5"><span class="section-number-2">5</span> Unicorn and PostgreSQL</h2>
 <div class="outline-text-2" id="text-5">
 <p>
-Let's consider what happens when the worker is processing the request, and the execution is in the database layer. In order to run the QUIT signal handler, the database call is interrupted <b>and canceled</b>. The QUIT signal handler closes the socket and <code>worker</code> to <code>nil</code>, the request is resumed, but since the database call was canceled, a Ruby exception is thrown, and then the worker exits. 
+Let's consider what happens when the worker is processing the request, and the execution is in the database layer. In order to run the QUIT signal handler, the database call is interrupted <b>and canceled</b>. The QUIT signal handler closes the socket and sets <code>worker</code> to <code>nil</code>, the request is resumed, but since the database call was canceled, a Ruby exception is thrown, and then the worker exits. 
 </p>
 </div>
 </div>
@@ -245,7 +245,7 @@ It doesn't seem like (2) is configurable, and (3) is useful in some cases. There
 </div>
 <div id="postamble" class="status">
 <p class="author">Author: Yuri Niyazov</p>
-<p class="date">Created: 2013-12-06 Fri 15:29</p>
+<p class="date">Created: 2013-12-06 Fri 16:11</p>
 <p class="creator"><a href="http://www.gnu.org/software/emacs/">Emacs</a> 24.3.1 (<a href="http://orgmode.org">Org</a> mode 8.0.7)</p>
 <p class="xhtml-validation"><a href="http://validator.w3.org/check?uri=referer">Validate XHTML 1.0</a></p>
 </div>
