@@ -1,4 +1,5 @@
 #+TITLE: Exercises for Python
+#+AUTHOR: YN
 * Bronze
 Write a program that asks the user to input an integer, and then for each number from 1 to the user-entered integer, print it out on a separate line. Here's the starting point for the file =bronze.py=
 #+INCLUDE: "bronze.py" src python
