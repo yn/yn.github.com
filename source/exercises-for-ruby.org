@@ -1,0 +1,98 @@
+#+TITLE: Exercises for Ruby
+For these exercises, try not to use Google. Use the book, or ask me.
+* Bronze
+Write a program that asks the user to input an integer, and then for each number from 1 to the user-entered integer, print it out on a separate line. Here's the starting point for the file =loop1.rb=
+#+INCLUDE: "loop1.rb" src ruby
+Sample interaction on irb:
+#+BEGIN_EXAMPLE
+∴ irb
+2.0.0-p353 :001 > load "loop1.rb"
+ => true 
+2.0.0-p353 :002 > loop1
+Please enter a number: 2
+1
+2
+ => nil 
+2.0.0-p353 :003 > loop1
+Please enter a number: 10
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+ => nil 
+#+END_EXAMPLE
+* Silver
+Write a program that asks the user to input a number. Print out that number back, except that if the user entered a number that is divisible by 3, you print out "Fizz", and if the user entered a number that is divisible by 5, you print out "Buzz". If the user entered a number that is divisible by both 3 and 5, then you print out "FizzBuzz". Here's the starting point for the file =fizzbuzz1.rb=:
+#+INCLUDE: "fizzbuzz1.rb" src ruby
+Sample interaction on irb
+#+BEGIN_EXAMPLE
+∴ irb
+2.0.0-p353 :001 > load "fizzbuzz1.rb"
+ => true 
+2.0.0-p353 :002 > fizzbuzz1
+Please enter a number: 1
+1
+ => nil 
+2.0.0-p353 :003 > fizzbuzz1
+Please enter a number: 2
+2
+ => nil 
+2.0.0-p353 :004 > fizzbuzz1
+Please enter a number: 3
+Fizz
+ => nil 
+2.0.0-p353 :005 > fizzbuzz1
+Please enter a number: 5
+Buzz
+ => nil 
+2.0.0-p353 :006 > fizzbuzz1
+Please enter a number: 15
+FizzBuzz
+ => nil 
+2.0.0-p353 :007 > fizzbuzz1
+Please enter a number: 16
+16
+ => nil
+#+END_EXAMPLE
+* Gold
+Write a program that doesn't ask for any user input, which means that it always does the same thing, which is: go from number 1 to number 100, and for each one of those numbers, print it on a separate line, except if the number is divisible by 3, print out "Fizz" instead of the number, and if the number is divisible by 5, print out "Buzz" instead of the number, and if the number is divisible by both 3 and 5, then print out FizzBuzz instead of the number. Here's the starting point for the file =fizzbuzz2.rb=:
+#+INCLUDE: "fizzbuzz2.rb" src ruby
+Sample interaction on irb
+#+BEGIN_EXAMPLE
+∴ irb
+2.0.0-p353 :001 > load "fizzbuzz2.rb"
+ => true 
+2.0.0-p353 :002 > fizzbuzz2
+1
+2
+Fizz
+4
+Buzz
+...
+14
+FizzBuzz
+16
+...
+29
+FizzBuzz
+31
+...
+97
+98
+Fizz
+Buzz
+#+END_EXAMPLE
+* Platinum
+Write a program that asks the user to enter two words. The program then prints out both words on one line. The words will be separated by enough dots so that the total line length is 30:
+#+BEGIN_EXAMPLE
+First word: turtle
+Second word: 153
+
+turtle.....................153
+#+END_EXAMPLE

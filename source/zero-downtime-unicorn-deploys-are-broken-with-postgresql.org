@@ -1,0 +1,52 @@
+#+OPTIONS: ^:{}
+#+TITLE: Zero-downtime Unicorn deploys are broken with PostgreSQL
+#+BEGIN_HTML
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-46281730-1', 'yn.github.io');
+  ga('send', 'pageview');
+
+</script>
+#+END_HTML
+* Disclaimer
+I did read the excellent [[http://www.amazon.com/Programming-Environment-Addison-Wesley-Professional-Computing/dp/0321525949][Advanced Programming in the UNIX Environment]] a few years ago, but I am far from an expert. In particular, I am sure that I am using a lot of the signal-related terminology imprecisely. 
+* Introduction
+If you are a Ruby shop running [[http://unicorn.bogomips.org/][Unicorn]] and [[http://www.postgresql.org/][PostgreSQL]], you might have noticed that your zero-downtime deploys are broken. The visible symptom of this breakage is a large number of @@html:<code>PG::QueryCanceled</code>@@ or @@html:<code>ActiveRecord::StatementInvalid</code>@@ (with @@html:<code>PG::QueryCanceled</code>@@ in the message field) exceptions in your error logs and visibly aborted requests to your users. This is happening on every deploy, even though you have diligently read the Unicorn documentation and know that sending the USR2 signal to the Unicorn master will let all the Unicorn workers finish their current requests before exiting while the new master is bringing up new workers. 
+* The Ruby PostgreSQL gem change
+On May 10th, 2013, [[https://github.com/ged/ruby-pg/commit/a4283c5c5b66ff4ecbb071965cf216e93d76a648][this commit]] went into the Postgresql Ruby gem repository. On Jul 23rd, 2013, it was released, along with other changes, as version 0.16. From an architectural correctness point of view, this change is a good one: Ruby (in particular, we are talking about MRI 2.0.0) executes signal handlers on the main thread. Before version 0.16, executing @@html:<code> conn.exec("select&nbsp;pg_sleep(10)") </code>@@ was a blocking call - if it was executing on the main thread, then no signal handlers could execute until @@html:<code>conn.exec</code>@@ returned. In every-day terms, this means that pressing @@html:<code>@@Ctrl-C@@html:</code>@@ while something on the main thread was performing a long-running action in PostgreSQL would have no effect until the SQL action completed, which is undesirable - what if the user was trying to interrupt the long-running action because it was dropping the "users" table?
+
+In general, library code written in C has the option of being a good citizen and providing an unblocking function, or a "ubf" in Ruby terminology, that performs the necessary cleanup if a long-running, blocking-interrupts-by-default action is interrupted. This is explained in great detail in [[https://media.pragprog.com/titles/ruby3/ext_ruby.pdf][Extending Ruby 1.9 (pdf)]]. The 0.16 and later versions of Ruby-PG gem include such an unblocking function. The implementation of that function follows:
+@@html:<pre>
+void ubf_cancel_running_command(void *c) {
+  PGconn *conn = (PGconn*) c;
+  PQrequestCancel(conn);
+}
+</pre>@@
+* Unicorn signals
+Unicorn workers are single-threaded processes that execute the incoming request on the main thread. The Unicorn master, when it receives a USR2 signal starts sending the workers the QUIT signal. [[https://github.com/defunkt/unicorn/blob/v4.5.0/lib/unicorn/http_server.rb#L609-L653][Here]] is the @@html:<code>worker_loop</code>@@ method]] that has all the interesting stuff.
+The QUIT signal handler for a Unicorn worker:
+@@html:<pre>
+trap(:QUIT) { worker = nil; LISTENERS.each { |s| s.close rescue nil }.clear }
+</pre>@@
+Some explanation: Unicorn workers all listen on the same socket, and each time a client connects, the kernel delivers the connection request to one of the workers. The Unicorn master sends a QUIT signal; if the worker is currently waiting for a request to come in, then the signal handler above runs, sets @@html:<code>worker</code>@@ to @@html:<code>nil</code>@@, and closes the socket, which causes the @@html:<code>worker_loop</code>@@, and thus the whole process, to exit. If the worker is already in the middle of processing a request, but is not in the database layer, then the signal handler above runs, the request is resumed and finished, then the @@html:<code>worker_loop</code>@@ exits.
+* Unicorn and PostgreSQL
+Let's consider what happens when the worker is processing the request, and the execution is in the database layer. In order to run the QUIT signal handler, the database call is interrupted *and canceled*. The QUIT signal handler closes the socket and sets @@html:<code>worker</code>@@ to @@html:<code>nil</code>@@, the request is resumed, but since the database call was canceled, a Ruby exception is thrown, and then the worker exits. 
+* Possible solution
+One possible solution is to downgrade to a pre-0.16 version of the ruby pg gem; however, this solution is not tenable long-term, as there are many other bug fixes that have accumulated over time. 
+Let's review: the three components that interact here are:
+1) Unicorn workers process requests on the main thread
+2) Ruby always delivers signals to the main thread and interrupts it
+3) The ruby pg gem says that if it is interrupted, it will cancel the ongoing database action.
+It doesn't seem like (2) is configurable, and (3) is useful in some cases. There doesn't seem to be any particular reason for why the @@html:<code>worker_loop</code>@@ of a Unicorn worker process must be executing on the main Ruby thread. Indeed, in our internal tests, patching @@html:<code>worker_loop</code>@@ to run in a separate thread, and having the main thread join it, solved the problem.
+** Forks
+Our Unicorn fork is located [[https://github.com/yn/unicorn][here]]. Note that this is on the thread_hack branch, rather than on master. The commit of interest is [[https://github.com/yn/unicorn/commit/5fe54c46c57128533058506f8785f269f2c3fe57][here]]. We also released a renamed version of this gem [[https://rubygems.org/gems/unicorn-academia][here]].
+* Discussions of this problem across the web:
+1) https://groups.google.com/forum/#!topic/ruby-pg/5_ylGmog1S4
+2) http://rubyforge.org/pipermail/mongrel-unicorn/2013-December/001974.html
+3) http://article.gmane.org/gmane.comp.lang.ruby.unicorn.general/1936
+* Update
+The maintainer of Unicorn [[https://github.com/defunkt/unicorn/commit/6f6e4115b4bb03e5e7c55def91527799190566f2][fixed]] this problem by rewriting the communication mechanism between master and workers to use a pipe rather than Unix signals, and there is a [[http://rubyforge.org/pipermail/mongrel-unicorn/2013-December/001980.html][prerelease]] version of the new Unicorn gem. Use it.
